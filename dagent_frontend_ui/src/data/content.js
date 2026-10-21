@@ -67,6 +67,29 @@ export const projectStatus = [
   { label: 'Not hosted', title: 'No public detection service', body: 'The trained models are large and there is no funding to host them. A public service would also conflict with the goal of keeping page text on the user’s device.' },
 ];
 
+export const unfinishedWork = [
+  {
+    label: 'Not built',
+    title: 'On-device model',
+    body: 'The DistilBERT models have not been exported to ONNX or integrated into the browser. Shrinking and running them locally is the main product goal.',
+  },
+  {
+    label: 'Not ready to ship',
+    title: 'A standalone extension',
+    body: 'The current extension prototype depends on a separately run API and large model files. A ready-to-install release that works without manual backend setup does not exist yet.',
+  },
+  {
+    label: 'Needs work',
+    title: 'Privacy hardening',
+    body: 'Before release, the prototype still needs tighter local API access and cleanup of debug output and remote host permissions.',
+  },
+  {
+    label: 'More data needed',
+    title: 'Reliable rare-category detection',
+    body: 'The dataset has only 27 Obstruction, 12 Sneaking, and 4 Forced Action examples. Predictions for these classes need more labelled examples and evaluation.',
+  },
+];
+
 export const privacyPrinciples = [
   { title: 'Keep page text local', body: 'The product goal is to run text collection and model inference on the user’s own device, without sending browsing content to a server.' },
   { title: 'No hosted AI in the product', body: 'The API contains an experimental Groq review option, but it sends flagged sentences to a third party. It is not part of the intended product and should remain disabled.' },

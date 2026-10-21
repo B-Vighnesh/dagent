@@ -2,7 +2,7 @@
 import Icon from '../components/Icon.jsx';
 import Layout from '../components/Layout.jsx';
 import ScanPreview from '../components/ScanPreview.jsx';
-import { about, datasetFacts, patternTypes, pipeline, privacyPrinciples, projectStatus, roadmap, steps } from '../data/content.js';
+import { about, datasetFacts, patternTypes, pipeline, privacyPrinciples, projectStatus, roadmap, steps, unfinishedWork } from '../data/content.js';
 import { ArrowRight } from "lucide-react";
 
 function Hero() {
@@ -31,7 +31,7 @@ function Hero() {
 </Icon>
             </Link>
             <Link className="button ghost" to="/download">
-              Get the extension <Icon>down</Icon>
+              Extension status <Icon>down</Icon>
             </Link>
           </div>
 
@@ -260,8 +260,22 @@ function Pipeline() {
 
 function Roadmap() {
   return (
-    <section id="roadmap" className="section">
+    <section id="roadmap" className="section muted">
       <div className="shell">
+        <p className="eyebrow">THE PRODUCT IDEA: WHAT IS STILL AHEAD</p>
+        <h2>What is not built yet</h2>
+        <p className="section-lead">
+          These are future goals, not features available in the current demo or extension prototype.
+        </p>
+        <div className="project-grid unfinished-grid">
+          {unfinishedWork.map((item) => (
+            <article className="project-card" key={item.title}>
+              <span className="project-label">{item.label}</span>
+              <h3>{item.title}</h3>
+              <p>{item.body}</p>
+            </article>
+          ))}
+        </div>
         <div className="roadmap-card">
           <p className="eyebrow">{roadmap.eyebrow}</p>
           <h2>{roadmap.title}</h2>
@@ -314,7 +328,7 @@ function Cta() {
 </Icon>
           </Link>
           <Link className="button ghost light" to="/download">
-            Get the extension <Icon>
+            Extension status <Icon>
   <ArrowRight size={10} strokeWidth={1.5} />
 </Icon>
           </Link>
@@ -335,8 +349,8 @@ export default function HomePage() {
       <Pipeline />
       <PrivacySection />
       <HowItWorks />
-      <Cta />
       <Roadmap />
+      <Cta />
     </Layout>
   );
 }

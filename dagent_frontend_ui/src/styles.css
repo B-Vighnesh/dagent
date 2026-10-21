@@ -2253,3 +2253,4 @@ opacity:1
 .dataset-fact strong{min-width:88px;color:#08737a;font:700 27px/1 'Space Grotesk',sans-serif}
 .dataset-fact span{color:var(--muted,#627071);font-size:13px}
 @media(max-width:760px){.project-grid{grid-template-columns:1fr}.dataset-layout{grid-template-columns:1fr;gap:26px}}
+.unfinished-grid{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:46px}
