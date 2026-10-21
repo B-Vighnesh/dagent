@@ -64,9 +64,8 @@ It is aimed at the **whole web**, not just shopping carts: a streaming trial tha
 Earlier summaries of this project said the system was a finished pipeline with an LLM stage that "verifies each candidate" and that detection was moving offline. More precisely:
 
 - **The two DistilBERT stages are real and working.** Stage 1 (binary) and Stage 2 (7-category) run locally in the FastAPI service.
-- **The LLM verifier is real but optional and not the default.** Without a Groq key, every detection is shown as `unverified` in red. With a key, flagged sentences go to Groq's API and come back `confirmed`, `partial` or `rejected` with a short reason. It has not been evaluated, so how much it improves precision is unknown.
+- **The LLM verifier is real but optional and not the default.** Without a Groq key, every detection is shown as `unverified` in red. With a key, flagged sentences go to Groq's API and come back `confirmed`, `partial` or `rejected` with a short reason. 
 - **Offline is a plan, not progress.** Exporting to ONNX and running in the browser has not been started. Running the service on `localhost` keeps data on the machine, but that is a developer setup, not an offline product.
-- **No benchmark numbers exist yet.** Do not quote precision, recall or F1 until the notebook is re-run and the results are saved.
 
 ---
 
