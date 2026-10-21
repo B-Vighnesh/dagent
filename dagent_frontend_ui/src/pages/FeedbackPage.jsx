@@ -17,6 +17,12 @@ const contactMethods = [
   },
   {
     icon: 't',
+    label: 'Phone',
+    value: '+91 86184 02581',
+    href: 'tel:+918618402581',
+  },
+  {
+    icon: 't',
     label: 'Response time',
     value: 'Every report reviewed within 48 hours',
   },
