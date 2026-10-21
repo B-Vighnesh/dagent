@@ -10,9 +10,10 @@ const contactMethods = [
     href: 'mailto:bvighneshkumar@gmail.com',
   },
   {
-    icon: 'o',
-    label: 'Based in',
-    value: 'Mangaluru, Karnataka, India',
+    icon: '@',
+    label: 'Email',
+    value: 'vighneshsheregar2004@gmail.com',
+    href: 'mailto:vighneshsheregar2004@gmail.com',
   },
   {
     icon: 't',

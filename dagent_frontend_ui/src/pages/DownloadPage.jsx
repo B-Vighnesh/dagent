@@ -33,7 +33,7 @@ const faqs = [
   },
   {
     q: 'Which browsers are supported?',
-    a: 'Chrome, Edge, and Firefox are supported today. Pick your browser above before downloading.',
+    a: 'The current extension download is for Chrome. Edge and Firefox versions are not available yet.',
   },
   {
     q: 'How does DAGENT decide something is a dark pattern?',
@@ -50,6 +50,12 @@ export default function DownloadPage() {
   const [notice, setNotice] = useState('');
   
 function handleDownload() {
+  if (browser !== 'Chrome') {
+    setNotice(`${browser} is not available yet. It will be available soon.`);
+    return;
+  }
+
+  setNotice('');
   window.open(
     'https://drive.google.com/drive/folders/1OQwfpfzqWiCtCzNEb-3lv-mvVnykdfqs',
     '_blank'
@@ -80,8 +86,13 @@ function handleDownload() {
                 </button>
               ))}
             </div>
-            <button type="button" className="button primary wide" onClick={handleDownload}>
-              Download for {browser} 
+            <button
+              type="button"
+              className="button primary wide"
+              onClick={handleDownload}
+              disabled={browser !== 'Chrome'}
+            >
+              {browser === 'Chrome' ? 'Download for Chrome' : `${browser} not available - coming soon`}
             </button>
             <small>{notice || 'Free · No account required · Privacy-first'}</small>
           </div>

@@ -59,7 +59,7 @@ export default function Footer() {
 
       <div className="shell footer-bottom">
         <span>&copy; {year} DAGENT. All rights reserved.</span>
-        <span className="footer-contact">Mangaluru, Karnataka | <a href="mailto:bvighneshkumar@gmail.com">bvighneshkumar@gmail.com</a></span>
+        <span className="footer-contact"><a href="mailto:bvighneshkumar@gmail.com">bvighneshkumar@gmail.com</a> | <a href="mailto:vighneshsheregar2004@gmail.com">vighneshsheregar2004@gmail.com</a></span>
       </div>
     </footer>
   );
