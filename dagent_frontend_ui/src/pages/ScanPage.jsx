@@ -490,7 +490,7 @@ export default function ScanPage() {
           <h1>Scroll to watch DAGENT work.</h1>
           <p className="lead">
             This is a simulated shopping page. Pause on any section for a moment and DAGENT
-            scans it — just like the real extension — and shows a popup right on your screen.
+            scans it. Just like the real extension and shows a popup right on your screen.
           </p>
         </div>
       </section>
