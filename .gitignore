@@ -1,0 +1,12 @@
+﻿dagent_models/
+dagent_api/.venv/
+dagent_api/models/
+dagent_api/.env
+dagent_api/.env.*
+!dagent_api/.env.example
+dagent_api/**/__pycache__/
+dagent_ui/node_modules/
+dagent_frontend_ui/node_modules/
+dagent_frontend_ui/dist/
+dagent/dagent_api/app/__pycache__/
+dagent_api/data/*.jsonl

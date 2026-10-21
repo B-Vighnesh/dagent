@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Vite production output
+dist/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Logs and editor files
+*.log
+.DS_Store
+.idea/
+.vscode/

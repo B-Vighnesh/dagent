@@ -1,0 +1,220 @@
+# Dagent — End-to-End Architecture (Extension → Backend → Popup)
+
+Pin-to-pin reference of exactly how the extension currently works, from the moment a trigger fires to the moment a popup appears (or doesn't).
+
+---
+
+## 1. Where each piece lives
+
+| Component | Runs where | Lifetime |
+|---|---|---|
+| `content-script.js` | Injected into every open tab | Re-injected fresh on every full page load/refresh |
+| `classifiedCache` (the cache) | In-memory JS `Map`, inside the content script | **Lives on the user's device only**, per tab, per page load — never sent anywhere, never persisted to disk. Wiped on refresh/navigation. |
+| `background.js` | Chrome's background service worker | Persists across tabs/navigation within the browser session; owns the actual network call |
+| FastAPI backend | Your machine (or wherever deployed) | Stateless — holds no memory of past requests at all |
+
+**Important:** the cache is 100% client-side. The backend never knows a cache exists — every request it receives is treated identically whether it's the extension's 1st or 500th call.
+
+---
+
+## 2. Scraping — what gets read off the page
+
+**Selector:** `p, h1, h2, h3` — nothing else is scraped (no `span`, `div`, `button`, `a`, etc. at this time).
+
+**For each matched element:**
+1. Read `el.innerText || el.textContent`, trim whitespace.
+2. **Discard if under 3 characters** (`MIN_TEXT_LENGTH = 3`) — filters out stray whitespace/icons-as-text.
+3. **Visibility check** — must pass all of:
+   - `getBoundingClientRect()` width/height > 0
+   - Element's box intersects the current viewport (`0 ≤ top ≤ window.innerHeight`, etc.)
+   - Computed style: not `display:none`, not `visibility:hidden`, not `opacity:0`
+   - → **Only elements currently on-screen are scraped.** Scrolling past something removes it from consideration until it's back in view.
+4. **Hash the text** — a fast string hash (djb2-style), producing a short base-36 key, e.g. `"k3f9x2"`. This hash is the cache key everywhere downstream.
+5. **Assign a `block_id`** — a `WeakMap<Element, string>` gives each DOM element a stable id (`dagent-1`, `dagent-2`, ...) the first time it's seen, reused on subsequent scrapes of the same element.
+6. **Tag captured too** — `el.tagName.toLowerCase()` (`p`, `h1`, `h2`, `h3`) is sent alongside the text, so the backend/analytics can distinguish a heading from a paragraph if ever needed. Currently the model treats all tags identically — tag is metadata, not a model input.
+
+---
+
+## 3. Triggers — what causes a scrape
+
+| Trigger | Listener | Debounce | Why |
+|---|---|---|---|
+| DOM changes | `MutationObserver` on `document.body` (childList, subtree, characterData) | **400ms** | Catches SPA content updates (React/Vue re-renders) without firing on every micro-mutation |
+| Scroll | `window.scroll` (passive) | **300ms** | Fires after scrolling *stops*, not continuously while scrolling |
+| Mouse idle | `window.mousemove` (passive), but debounced so it only fires after the mouse *stops* | **500ms** | Used as a general "user is still engaged" signal, not tracked continuously |
+
+All three call the same function, `sendBlocksIfAny()`, which internally calls `scrapeVisibleBlocks()`.
+
+---
+
+## 4. The cache-hit / cache-miss decision (per block, per scrape cycle)
+
+For every visible, sufficiently-long text block found in step 2:
+
+```
+hash = hash(text)
+
+if hash in classifiedCache:
+    if classifiedCache[hash] is FLAGGED
+       and (now - lastShownAt[hash]) > 600ms:      # REPLAY_COOLDOWN_MS
+        → replay result locally, no network call
+        → update lastShownAt[hash] = now
+    else:
+        → do nothing (either clean-and-cached, or shown too recently)
+elif hash in inFlight:
+    → do nothing (already waiting on a response for this exact text)
+else:
+    → add to newBlocks[], mark inFlight[hash] = true
+```
+
+**Cache miss** = text never classified before → goes to the backend.
+**Cache hit** = text already classified before → backend is *never* called again for that exact text, ever (for the life of that page load).
+
+---
+
+## 5. Response timing — cache hit vs cache miss
+
+| | Cache miss (new text) | Cache hit (already classified) |
+|---|---|---|
+| Network call? | Yes — goes through background worker → FastAPI `/detect` | **No** — zero network calls |
+| Batching delay | Up to 200ms (`BATCH_WINDOW_MS` in `background.js`) — waits to see if more blocks arrive before sending, so one page scan = one request, not N | None |
+| Model inference time (measured) | ~120ms (spaCy sentence segmentation + Stage 1 binary + Stage 2 category on flagged sentences), logged server-side per request | None — nothing computed, just a `Map.get()` |
+| Typical total time to popup | ~250–450ms from trigger to popup (batch window + inference + negligible localhost network) | **Effectively instant** — bounded only by whichever trigger's debounce caused the scrape (300–500ms), not by any processing time |
+| Where the time actually goes | Backend model inference + batch window | The trigger's own debounce timer — the classification itself costs ~0ms |
+
+**Key insight:** on a cache hit, the "slowness" people can perceive isn't computation — it's purely waiting for the *next scrape cycle* to run (i.e. waiting for you to scroll, or for the mouse-idle timer, or for a DOM mutation to fire). Once that cycle runs, the popup appears with no further delay.
+
+---
+
+## 6. Flagged vs clean — full behavior matrix
+
+| Scenario | Popup shown? | Color | Content |
+|---|---|---|---|
+| **Cache miss**, backend says flagged | ✅ Yes | Red | Exact sentence, category, confidence % |
+| **Cache miss**, backend says clean | ✅ Yes (once) | Green | "No dark pattern detected" |
+| **Cache hit**, was flagged, past 600ms cooldown, still visible | ✅ Yes | Red | Same sentence/category/confidence as originally returned (replayed from memory, not re-computed) |
+| **Cache hit**, was flagged, within 600ms cooldown | ❌ No | — | Suppressed to avoid double-firing from overlapping triggers |
+| **Cache hit**, was clean | ❌ No, never | — | Clean cache hits are filtered out entirely by design — the green toast only ever fires on a genuinely fresh classification, never on replay |
+
+If a single scrape cycle produces **multiple flagged detections at once** (e.g. a paragraph with 3 dark-pattern sentences), they don't stack — they **cycle one at a time**, each shown for 4 seconds (`TOAST_DISPLAY_MS`) before the next takes its place. A brand-new result (from any source — fresh or replay) always **immediately replaces** whatever's currently showing, resetting the cycle.
+
+---
+
+## 7. Calling the Dagent API — exact request
+
+**Who calls it:** `background.js`, never the content script directly (centralizing the fetch here keeps API-key/CORS handling in one place, and makes batching straightforward).
+
+**Batching:** every `SCAN_BLOCKS` message the background worker receives from a tab is appended to that tab's pending batch. A 200ms timer resets on every new arrival; when it finally fires (200ms of silence), everything accumulated is sent as **one** request.
+
+**Endpoint:** `POST {apiEndpoint}/detect` (default `http://localhost:8000/detect`, configurable via the toolbar popup, stored in `chrome.storage.sync`)
+
+**Request body:**
+```json
+{
+  "page_url": "https://www.flipkart.com/...",
+  "viewport_width": 1440,
+  "viewport_height": 900,
+  "blocks": [
+    { "block_id": "dagent-7", "text": "Only 2 left in stock!", "tag": "p" },
+    { "block_id": "dagent-8", "text": "Premium Wireless Headphones", "tag": "h1" }
+  ]
+}
+```
+Only blocks that were cache/in-flight misses are ever included here — never a full re-send of everything visible.
+
+---
+
+## 8. What the backend does with it
+
+For each block in the batch, independently:
+
+1. **Sentence segmentation** (spaCy) — splits the block's text into individual sentences. This matters for paragraph-length blocks; a single `<p>` can yield multiple sentences, each classified separately.
+2. **Stage 1 — binary classifier** (DistilBERT) runs on every sentence → dark-pattern probability.
+3. **Stage 2 — category classifier** (DistilBERT) runs **only** on sentences Stage 1 flagged — this is the cost-saving cascade design.
+4. **Assemble detections** — for each flagged sentence: category, confidence, and **character offsets** (`start_offset`/`end_offset`) locating it within the original block text.
+5. Response is logged server-side with timing: `detect: N block(s), M detection(s), Xms`.
+
+**Response body:**
+```json
+{
+  "results": [
+    {
+      "block_id": "dagent-7",
+      "source_text": "Only 2 left in stock!",
+      "detections": [
+        {
+          "sentence": "Only 2 left in stock!",
+          "category": "Scarcity",
+          "confidence": 0.94,
+          "binary_confidence": 0.97,
+          "start_offset": 0,
+          "end_offset": 22
+        }
+      ]
+    },
+    {
+      "block_id": "dagent-8",
+      "source_text": "Premium Wireless Headphones",
+      "detections": []
+    }
+  ],
+  "total_detections": 1
+}
+```
+
+---
+
+## 9. How the response gets back and rendered
+
+1. `background.js` receives the HTTP response, updates the tab's badge count (`chrome.action.setBadgeText`) if `total_detections > 0`, and relays the full `results` array to the originating tab via `chrome.tabs.sendMessage({ type: "SCAN_RESULT", results })`.
+2. The content script's `chrome.runtime.onMessage` listener catches this:
+   - For every result, recomputes the hash from `source_text` (kept consistent with the scraping-side hash) and writes it into `classifiedCache` — **this is the exact moment something becomes a "cache hit" for all future scrapes of that same text.**
+   - Stamps `lastShownAt[hash] = now`.
+   - Calls `presentResults(results)`.
+3. `presentResults()` collects all flagged detections across the batch; if any exist, shows them (cycling if more than one); if the batch was entirely clean, shows the one-time green toast.
+4. The popup itself is rendered into a **shadow DOM** host (`#dagent-popup-host`) — isolates its CSS from the host page entirely, positioned `fixed` bottom-right.
+
+---
+
+## 10. Full sequence, one concrete pass
+
+Using the "Only 2 left in stock!" example, first time it's ever seen on a page:
+
+```
+t=0ms     User scrolls; item enters viewport
+t=300ms   Scroll debounce fires → scrapeVisibleBlocks() runs
+          → hash not in cache, not in-flight → added to newBlocks
+          → SCAN_BLOCKS message sent to background worker
+t=300ms   Background worker starts its 200ms batch window
+t=500ms   Batch window closes → POST /detect fires
+t=~520ms  Backend responds (measured ~120ms inference + negligible localhost latency)
+t=~525ms  background.js relays SCAN_RESULT to the tab
+t=~526ms  Content script caches the hash, stamps lastShownAt, shows RED popup
+```
+**Total: roughly 500–550ms from scroll-stop to popup, dominated by the 300ms scroll debounce + 200ms batch window — not by the model itself.**
+
+Now the user scrolls away and back to the *same* item, 2 seconds later:
+
+```
+t=0ms     Item re-enters viewport
+t=300ms   Scroll debounce fires → scrapeVisibleBlocks() runs
+          → hash IS in cache, IS flagged, cooldown (600ms) already elapsed
+          → replayed locally, no network call at all
+t=300ms   RED popup shown — same sentence/category/confidence as before
+```
+**Total: ~300ms, and that 300ms is entirely the scroll debounce — zero backend involvement.**
+
+---
+
+## 11. Quick-reference: every timing constant in the system
+
+| Constant | Value | File |
+|---|---|---|
+| `MUTATION_DEBOUNCE_MS` | 400ms | `content-script.js` |
+| `SCROLL_DEBOUNCE_MS` | 300ms | `content-script.js` |
+| `MOUSE_IDLE_MS` | 500ms | `content-script.js` |
+| `REPLAY_COOLDOWN_MS` | 600ms | `content-script.js` |
+| `TOAST_DISPLAY_MS` | 4000ms | `content-script.js` |
+| `MIN_TEXT_LENGTH` | 3 chars | `content-script.js` |
+| `BATCH_WINDOW_MS` | 200ms | `background.js` |
+| Measured backend inference time | ~120ms | logged per-request in uvicorn console |
