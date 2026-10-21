@@ -1,8 +1,8 @@
-import { Link } from 'react-router-dom';
+﻿import { Link } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import Layout from '../components/Layout.jsx';
 import ScanPreview from '../components/ScanPreview.jsx';
-import { about, patternTypes, pipeline, roadmap, steps } from '../data/content.js';
+import { about, datasetFacts, patternTypes, pipeline, privacyPrinciples, projectStatus, roadmap, steps } from '../data/content.js';
 import { ArrowRight } from "lucide-react";
 
 function Hero() {
@@ -11,7 +11,7 @@ function Hero() {
       <div className="shell hero-grid">
         <div>
           <p className="eyebrow">
-            DARK PATTERN DETECTOR <i>o</i> LIVE
+            DARK PATTERN DETECTOR <i>o</i> PROJECT DEMO
           </p>
           <h1>
             Spot the manipulation.
@@ -19,14 +19,14 @@ function Hero() {
             <em>Choose freely.</em>
           </h1>
           <p className="lead">
-            DAGENT is a browser extension that scans the page you are on for
-            deceptive design patterns before they steer your decisions.
-            Browse with clarity, not pressure.
+            DAGENT explores how a browser tool could help people notice
+            deceptive design patterns and make informed choices. The scan on
+            this site is a demo with prepared examples.
           </p>
 
           <div className="actions">
             <Link className="button primary" to="/scan">
-              Live demo <Icon>
+              Try the demo <Icon>
   <ArrowRight size={10} strokeWidth={1.5} />
 </Icon>
             </Link>
@@ -37,7 +37,7 @@ function Hero() {
 
           <div className="metrics">
             <div>
-              <b>6</b>
+              <b>7</b>
               <span>Pattern categories detected</span>
             </div>
             <div>
@@ -75,6 +75,78 @@ function AboutSection() {
           <p className="eyebrow">{about.solution.eyebrow}</p>
           <h3>{about.solution.title}</h3>
           <p>{about.solution.body}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ProjectStatus() {
+  return (
+    <section className="section project-status">
+      <div className="shell">
+        <p className="eyebrow">WHERE THE PROJECT STANDS</p>
+        <h2>A working idea, still in progress.</h2>
+        <p className="section-lead">
+          The website lets you explore the concept. The detector is not hosted: the models are large, hosting needs funding, and our goal is to keep page text on your device.
+        </p>
+        <div className="project-grid">
+          {projectStatus.map((item) => (
+            <article className="project-card" key={item.label}>
+              <span className="project-label">{item.label}</span>
+              <h3>{item.title}</h3>
+              <p>{item.body}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PrivacySection() {
+  return (
+    <section className="section muted privacy-section">
+      <div className="shell">
+        <p className="eyebrow">PRIVACY IS A DESIGN RULE</p>
+        <h2>Page text should stay yours.</h2>
+        <p className="section-lead">
+          The current website is a static demo. For a future release, Dagent is designed around local detection, minimal storage, and no third-party AI calls.
+        </p>
+        <div className="about-grid">
+          {privacyPrinciples.map((item) => (
+            <article className="about-point" key={item.title}>
+              <h3>{item.title}</h3>
+              <p>{item.body}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DatasetSection() {
+  return (
+    <section className="section dataset-section">
+      <div className="shell dataset-layout">
+        <div>
+          <p className="eyebrow">BUILT FROM EXAMPLES</p>
+          <h2>Learning to recognize the language.</h2>
+          <p className="section-lead">
+            The training set combines labelled examples from different pages. The two classifier stages first look for a possible pattern, then predict its category.
+          </p>
+          <p className="dataset-note">
+            Categories with few examples, such as Forced Action, may be less reliable. A model prediction is a prompt to look closer, not a final judgment.
+          </p>
+        </div>
+        <div className="dataset-facts">
+          {datasetFacts.map(([value, label]) => (
+            <div className="dataset-fact" key={label}>
+              <strong>{value}</strong>
+              <span>{label}</span>
+            </div>
+          ))}
         </div>
       </div>
     </section>
@@ -126,14 +198,12 @@ function Pipeline() {
       <div className="shell">
         <p className="eyebrow">HOW DETECTION ACTUALLY WORKS</p>
         <h2>
-          Two stages. Three possible
+          Two stages to
           <br />
-          verdicts.
+          narrow it down.
         </h2>
         <p className="section-lead">
-          The extension does not guess on its own. Every flagged element
-          passes through a fast filter, then a reasoning model, before you
-          ever see a popup.
+          In the local prototype, text is split into sentences, screened for possible patterns, then assigned a likely category. No LLM is required for this two-model pipeline.
         </p>
 
         <div className="pipeline">
@@ -208,11 +278,7 @@ function HowItWorks() {
       <div className="shell split">
         <div>
           <p className="eyebrow">USING THE EXTENSION</p>
-          <h2>
-            Clarity in three
-            <br />
-            simple steps.
-          </h2>
+          <h2>From a demo to an on-device tool.</h2>
         </div>
 
         <ol className="steps">
@@ -263,11 +329,15 @@ export default function HomePage() {
     <Layout>
       <Hero />
       <AboutSection />
+      <ProjectStatus />
       <PatternGrid />
+      <DatasetSection />
       <Pipeline />
+      <PrivacySection />
       <HowItWorks />
       <Cta />
       <Roadmap />
     </Layout>
   );
 }
+

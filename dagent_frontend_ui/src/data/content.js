@@ -1,8 +1,8 @@
-export const about = {
+﻿export const about = {
   eyebrow: 'ABOUT DARK PATTERNS',
   title: 'What is a dark pattern?',
   lead:
-    'A dark pattern is a user interface deliberately designed to trick you into doing something you did not mean to do such as subscribing, overspending, or handing over data you would rather keep private. They exploit how people actually read and decide, not how the business claims the product works.',
+    'A dark pattern is a design choice that steers people into actions they may not have chosen freely, such as subscribing, overspending, or sharing personal data. These tactics can be hard to spot because they often look like ordinary interface copy.',
   points: [
     {
       title: 'It looks like normal design',
@@ -14,64 +14,70 @@ export const about = {
     },
     {
       title: 'It is measurable',
-      body: 'Because these tactics follow recognizable structures, they can be detected systematically. This is the problem DAGENT is built to solve.',
+      body: 'Some tactics use recognizable language, which makes text classification a useful first step. Dagent explores how a tool could help people notice them.',
     },
   ],
   solution: {
     eyebrow: 'HOW DAGENT SOLVES IT',
-    title: 'A browser extension that reasons before it warns you.',
-    body: 'DAGENT is a browser extension. Once installed, it reads the page you are actually looking at, sends what it finds through a two-stage detection pipeline, and hands you a verdict.',
+    title: 'A browser tool that points out copy worth a second look.',
+    body: 'Dagent is a product concept with a simulated website demo and local extension and API prototypes. The hosted model is not deployed, so the live scan shown here uses prepared examples.',
   },
 };
 
 export const pipeline = [
   {
     stage: 'CAPTURE',
-    title: 'The extension scrapes the live page',
-    body: 'When you land on a page (or trigger a manual scan), the DAGENT extension reads the visible DOM of that screen such as banners, buttons, timers, opt-outs these are the same content you see, nothing more.',
+    title: 'The extension prototype reads visible text',
+    body: 'The local browser extension prototype collects visible page text, such as headings and paragraphs, while you browse.',
     tone: 'neutral',
   },
   {
     stage: 'STAGE 1',
-    title: 'Fast classifier: dark pattern or not?',
-    body: 'The scraped content is sent to our deployed model for a quick binary check. Most page content clears this stage in under a second.',
+    title: 'Stage 1: candidate or not?',
+    body: 'A fine-tuned DistilBERT classifier checks each sentence for signs of a dark pattern. In the prototype, this runs through a local API when model files are available.',
     tone: 'neutral',
     outcome: {
       label: 'Not a dark pattern',
       popup: 'green',
-      note: 'Green popup shown to the user in under 1 second. Nothing else happens.',
+      note: 'Sentences below the configured threshold move no further.',
     },
   },
   {
     stage: 'STAGE 2',
-    title: 'LLM reasoning engine',
-    body: 'Anything flagged in Stage 1 is escalated to an LLM that reviews it in context and reaches one of three verdicts, each with plain-language reasoning attached.',
+    title: 'Stage 2: predict a category',
+    body: 'A second DistilBERT classifier assigns a likely category to sentences flagged by Stage 1. Predictions can be wrong, especially for rare categories.',
     tone: 'neutral',
     branches: [
-      {
-        label: 'Confirmed dark pattern',
-        popup: 'red',
-        note: 'Red popup with the LLM\u2019s reasoning for why it qualifies.',
-      },
-      {
-        label: 'Partially dark pattern',
-        popup: 'orange',
-        note: 'Orange popup with reasoning explaining the ambiguity.',
-      },
-      {
-        label: 'Rejected by the LLM',
-        popup: 'green',
-        note: 'The LLM overturns Stage 1 then green popup, no alert shown.',
-      },
+      { label: 'Scarcity or urgency', popup: 'red', note: 'Low-stock messages and countdowns are common examples.' },
+      { label: 'Social proof', popup: 'orange', note: 'Claims about how many people are viewing an item.' },
+      { label: 'Other trained categories', popup: 'green', note: 'Misdirection, obstruction, sneaking, and forced action.' },
     ],
   },
 ];
 
 export const roadmap = {
-  eyebrow: 'WHAT\u2019S NEXT',
-  title: 'Going fully offline.',
-  body: 'Right now, detection runs on our deployed model so we can stay accurate while the dataset grows. The long-term goal is a lightweight model that runs entirely on your device where no page data ever leaving your browser. Getting there means training on more real-world examples first, which is what this dataset is for.',
+  eyebrow: 'WHAT’S NEXT',
+  title: 'The goal: detection that stays on your device.',
+  body: 'The trained models are too large and costly to host, and a hosted service would receive page text. Dagent is not deployed as a live detector. The next step is to make the models small enough to run locally in the browser, for example with ONNX.',
 };
+
+export const projectStatus = [
+  { label: 'Website demo', title: 'Prepared examples, not a live scan', body: 'The Scan page is a simulated shopping experience. Its alerts are built into the site and are not generated from the page you are browsing.' },
+  { label: 'Local prototype', title: 'An extension and API are available to explore', body: 'The browser extension can send visible text to a FastAPI service on your own machine. The API needs model files and is separate from this website demo.' },
+  { label: 'Not hosted', title: 'No public detection service', body: 'The trained models are large and there is no funding to host them. A public service would also conflict with the goal of keeping page text on the user’s device.' },
+];
+
+export const privacyPrinciples = [
+  { title: 'Keep page text local', body: 'The product goal is to run text collection and model inference on the user’s own device, without sending browsing content to a server.' },
+  { title: 'No hosted AI in the product', body: 'The API contains an experimental Groq review option, but it sends flagged sentences to a third party. It is not part of the intended product and should remain disabled.' },
+  { title: 'Store as little as possible', body: 'The design aims to keep results in the browser and clear them with the page or tab, with no telemetry or server-side history.' },
+];
+
+export const datasetFacts = [
+  ['2,356', 'labelled text examples'],
+  ['1,248', 'source pages'],
+  ['7', 'pattern categories'],
+];
 
 export const patternTypes = [
   {
@@ -140,12 +146,23 @@ export const patternTypes = [
       'To cancel your order before it ships, call us.',
     ],
   },
+  {
+    number: '07',
+    title: 'Forced Action',
+    tone: 'purple',
+    context: 'Signup & checkout',
+    definition: 'Making an account, sharing data, or taking another step a condition for continuing.',
+    examples: [
+      'Create an account to continue checkout.',
+      'Enter your email to see the price.',
+    ],
+  },
 ];
 
 export const steps = [
-  ['01', 'Install the extension', 'Add DAGENT to your browser once and it runs in the background from then on.'],
-  ['02', 'Browse normally', 'The extension reads the page you are on and runs it through the detection pipeline automatically.'],
-  ['03', 'Get an instant popup', 'Green means clear, orange means borderline, red means confirmed with the reasoning behind it.'],
+  ['01', 'Try the website demo', 'Scroll through a sample shopping page and see prepared examples of possible dark patterns.'],
+  ['02', 'Explore the prototype', 'The extension and API can be run locally with the downloaded model files. They are separate from this website demo.'],
+  ['03', 'Help shape what comes next', 'The long-term plan is a smaller on-device model that can analyze text without sending it to a hosted service.'],
 ];
 
 export const findings = [
@@ -244,3 +261,6 @@ export const scanSlides = [
   },
 ];
 export const supportedBrowsers = ['Chrome', 'Edge', 'Firefox'];
+
+
+

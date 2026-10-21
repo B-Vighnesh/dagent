@@ -2239,3 +2239,17 @@ opacity:1
     gap: 22px;
   }
 }
+
+/* Homepage sections added for the project overview. */
+.project-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:34px}
+.project-card{padding:24px;background:var(--panel,#fff);border:1px solid var(--border,#d9e3e4);border-radius:10px}
+.project-label{display:inline-block;margin-bottom:13px;color:#08737a;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.project-card h3{margin:0 0 10px;font:600 17px/1.35 'Space Grotesk',sans-serif}
+.project-card p,.dataset-note{margin:0;color:var(--muted,#627071);font-size:13px;line-height:1.7}
+.dataset-layout{display:grid;grid-template-columns:1.1fr .9fr;align-items:center;gap:48px}
+.dataset-layout .section-lead{margin-bottom:20px}
+.dataset-facts{display:grid;gap:12px}
+.dataset-fact{display:flex;align-items:center;gap:18px;padding:17px 20px;background:var(--panel,#fff);border:1px solid var(--border,#d9e3e4);border-radius:9px}
+.dataset-fact strong{min-width:88px;color:#08737a;font:700 27px/1 'Space Grotesk',sans-serif}
+.dataset-fact span{color:var(--muted,#627071);font-size:13px}
+@media(max-width:760px){.project-grid{grid-template-columns:1fr}.dataset-layout{grid-template-columns:1fr;gap:26px}}
