@@ -2256,7 +2256,7 @@ opacity:1
 .unfinished-grid{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:46px}
 
 .demo-popup-backdrop{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:16px;overflow-y:auto;overscroll-behavior:contain;background:rgba(5,18,23,.62);backdrop-filter:blur(4px);animation:demoPopupFade .18s ease-out}
-.demo-popup{position:relative;width:min(100%,500px);max-height:calc(100dvh - 32px);overflow-y:auto;padding:38px 36px 30px;background:var(--panel,#fff);color:var(--text,#172426);border:1px solid var(--border,#d9e3e4);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.28);animation:demoPopupRise .22s ease-out}
+.demo-popup{position:relative;width:min(100%,500px);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;padding:38px 36px 30px;background:var(--panel,#fff);color:var(--text,#172426);border:1px solid var(--border,#d9e3e4);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.28);animation:demoPopupRise .22s ease-out}
 .demo-popup .eyebrow{margin:0 0 12px;color:#08737a}
 .demo-popup h2{max-width:390px;margin:0 0 12px;font:700 clamp(24px,5vw,32px)/1.15 'Space Grotesk',sans-serif;letter-spacing:-.03em}
 .demo-popup>p:not(.eyebrow){margin:0;color:var(--muted,#627071);font-size:14px;line-height:1.7}
@@ -2268,5 +2268,6 @@ opacity:1
 @keyframes demoPopupFade{from{opacity:0}to{opacity:1}}
 @keyframes demoPopupRise{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:520px){.demo-popup{padding:36px 22px 24px}.demo-popup-actions{align-items:stretch;flex-direction:column;gap:8px}.demo-popup-actions .button{text-align:center;justify-content:center}.demo-popup-later{align-self:center}}
+
 
 
