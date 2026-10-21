@@ -1,4 +1,6 @@
-﻿import { Link } from 'react-router-dom';
+﻿import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import Layout from '../components/Layout.jsx';
 import ScanPreview from '../components/ScanPreview.jsx';
@@ -54,6 +56,86 @@ function Hero() {
   );
 }
 
+function DemoWelcomePopup() {
+  const [open, setOpen] = useState(false);
+  const closeButtonRef = useRef(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setOpen(true), 800);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    closeButtonRef.current?.focus();
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className="demo-popup-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setOpen(false);
+      }}
+    >
+      <section
+        className="demo-popup"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="demo-popup-title"
+        aria-describedby="demo-popup-description"
+        onKeyDown={(event) => {
+          if (event.key !== 'Tab') return;
+          const controls = event.currentTarget.querySelectorAll('button, a[href]');
+          const first = controls[0];
+          const last = controls[controls.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }}
+      >
+        <button
+          ref={closeButtonRef}
+          className="demo-popup-close"
+          type="button"
+          aria-label="Close demo invitation"
+          onClick={() => setOpen(false)}
+        >
+          X
+        </button>
+        <p className="eyebrow">INTERACTIVE PROTOTYPE</p>
+        <h2 id="demo-popup-title">Want to see how the idea works?</h2>
+        <p id="demo-popup-description">
+          Try the simulated scan to explore sample dark-pattern alerts. The demo uses prepared examples; it does not scan your current page.
+        </p>
+        <div className="demo-popup-actions">
+          <Link className="button primary" to="/scan" onClick={() => setOpen(false)}>
+            Run a scan
+          </Link>
+          <button className="demo-popup-later" type="button" onClick={() => setOpen(false)}>
+            Maybe later
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
+}
 function AboutSection() {
   return (
     <section id="about" className="section muted">
@@ -351,7 +433,9 @@ export default function HomePage() {
       <HowItWorks />
       <Roadmap />
       <Cta />
+      <DemoWelcomePopup />
     </Layout>
   );
 }
+
 
