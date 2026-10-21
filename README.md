@@ -4,63 +4,136 @@
 
 <h1 align="center">Dagent</h1>
 <p align="center"><b>The web has secrets. We find them.</b><br>
-A two-stage (plus optional third-stage) ML agent that detects dark patterns on any website, down to the exact sentence.</p>
+A privacy-first browser agent that spots dark patterns on any website, down to the exact sentence, without your browsing ever leaving your device.</p>
 
 ---
 
 ## Contents
 
-1. [Project status (read this first)](#1-project-status-read-this-first)
-2. [What is Dagent?](#2-what-is-dagent)
-3. [How it works](#3-how-it-works)
-4. [Dataset](#4-dataset)
-5. [Models and training](#5-models-and-training)
-6. [Backend (FastAPI)](#6-backend-fastapi)
-7. [Browser extension](#7-browser-extension)
-8. [Frontend website](#8-frontend-website)
-9. [Repository map](#9-repository-map)
-10. [Getting started](#10-getting-started)
-11. [Known limitations](#11-known-limitations)
-12. [Roadmap](#12-roadmap)
-13. [Further reading](#13-further-reading)
+1. [The idea](#1-the-idea)
+2. [Privacy is the product](#2-privacy-is-the-product)
+3. [Project status](#3-project-status)
+4. [How Dagent works (version 1)](#4-how-dagent-works-version-1)
+5. [Dark pattern categories and dataset](#5-dark-pattern-categories-and-dataset)
+6. [Models and training](#6-models-and-training)
+7. [Detection service (FastAPI)](#7-detection-service-fastapi)
+8. [Browser extension](#8-browser-extension)
+9. [Website](#9-website)
+10. [Repository map](#10-repository-map)
+11. [Getting started](#11-getting-started)
+12. [Privacy audit of the current prototype](#12-privacy-audit-of-the-current-prototype)
+13. [Known issues and limitations](#13-known-issues-and-limitations)
+14. [Roadmap](#14-roadmap)
+15. [Further reading](#15-further-reading)
 
 ---
 
-## 1. Project status (read this first)
+## 1. The idea
 
-> **The live detection model has not been deployed.**
-> The trained models are large, and the project did not have the funding needed to host them.
+Websites often steer people into choices they did not mean to make: fake urgency ("Sale ends in 5 minutes!"), false scarcity ("Only 2 left!"), fabricated social proof ("14 people are viewing this"), guilt-trip opt-outs, hidden costs, and subscriptions that are one click to join and a phone call to leave.
 
-- The **frontend** is a demonstration of the product idea. Its scan preview uses prepared examples and simulated results. It does **not** scan the website you are visiting and does **not** call the detection API.
-- The **API** and **extension** are working prototypes. To run them you must download the model files separately (see [Getting started](#10-getting-started)).
-- The longer-term goal is to shrink the models and find a sustainable way to run them, ideally fully on-device.
+Dagent is a **product idea** for a browser extension that reads the page you are actually looking at, flags manipulative wording as you scroll, and names:
+
+- **the exact sentence** that triggered the flag,
+- **the tactic** (Scarcity, Urgency, Social Proof, and so on),
+- **a confidence score**, so you can see why and not just that something was flagged.
+
+It is built for the **whole web**, not just shopping carts: a streaming trial that quietly auto-renews, a newsletter popup that returns no matter how often you close it, and a signup that buries "continue without an account" are all read the same way.
+
+---
+
+## 2. Privacy is the product
+
+Dagent reads what you read. That is only acceptable if what it reads never leaves your hands. So this is a design rule, not a feature:
+
+> **Page content, URLs and detection results must never be sent to an LLM, an online API, or any other remote service.**
+
+What this means for how Dagent is built:
+
+| Rule | What it means in practice |
+|---|---|
+| **All inference is local** | Scraping, sentence splitting, classification and display all run on the user's own machine. |
+| **No third-party AI calls** | No hosted LLM (Groq, OpenAI or otherwise) is part of the product. Verification must be done by something that runs locally. |
+| **No telemetry, no analytics** | The extension makes no network calls other than to the local detector. |
+| **Minimal storage** | Results live in the browser tab's memory and per-tab `chrome.storage.local`, and are cleared on navigation or tab close. Nothing is written to a server. |
+| **Nothing is retained by default** | No scraped text is saved to disk unless an operator explicitly turns that on for development. |
+| **The end state needs no server at all** | The target is the same models running inside the browser (ONNX with `transformers.js` / `onnxruntime-web`), so there is nothing to send data to. |
+
+Because of this rule, the optional cloud LLM review stage found in the prototype code is **not part of the product** (see [section 4](#stage-3-is-not-part-of-the-product) and [section 12](#12-privacy-audit-of-the-current-prototype)).
+
+---
+
+## 3. Project status
+
+Dagent is a **product concept with a complete first-version design and a working local prototype**. The live, hosted detector has deliberately not been deployed: hosting the models would mean running a server that receives users' page text, which conflicts with the privacy rule above. The models are also large, and there is no funding to host them.
 
 | Component | Status |
 |---|---|
-| Dataset (2,356 labelled examples) | Done |
+| Dataset (2,356 labelled examples, 7 categories) | Done |
 | Two-stage DistilBERT training notebook | Done |
-| FastAPI backend (`/health`, `/detect`) | Prototype, works locally with model files |
-| Stage 3 LLM verification (Groq) | Prototype, optional, fails open |
-| Chrome (Manifest V3) extension | Prototype, targets `http://localhost:8000` |
-| Frontend website + simulated scan demo | Demo only |
-| Hosted / deployed model | Not deployed |
-| On-device (ONNX / in-browser) mode | Planned |
+| FastAPI detection service (`/health`, `/detect`) | Working prototype, runs locally with model files |
+| Chrome (Manifest V3) extension | Working prototype, talks to `localhost` |
+| Website (home, scan demo, download, feedback) | Demo of the idea; scan preview is simulated |
+| Cloud LLM verification (Groq) | Experimental code, **off by default, not part of the product** |
+| On-device model (ONNX, in-browser) | Planned; the main goal for a shippable version |
+| Hosted / deployed model | Not deployed, by design |
+
+The website's scan page uses prepared examples. It does not scan the site you are visiting and does not call the detection service.
 
 ---
 
-## 2. What is Dagent?
+## 4. How Dagent works (version 1)
 
-Websites often use manipulative design and copy to steer people into choices they did not mean to make: fake urgency ("Sale ends in 5 minutes!"), false scarcity ("Only 2 left!"), fabricated social proof ("14 people are viewing this"), confirmshaming, hidden costs, forced continuity, and misdirection.
+Version 1 is a two-stage cascade that runs entirely on the user's side. The second stage only ever sees what the first stage flagged, which keeps it fast enough to run continuously.
 
-Dagent explores how a browser tool could help people spot this as they browse. It is designed to:
+<p align="center">
+  <img src="assets/extension-flow.png" alt="Dagent flow: triggers fire, scrape and hash visible text, cached results replay locally, new text goes to the background worker, popup renders the result" width="680">
+</p>
 
-- Read the page **as the user actually scrolls it**, not just a one-time snapshot.
-- Classify text at **sentence level**, even inside long paragraphs.
-- Return **which exact sentence** triggered a detection, its **category**, and a **confidence score**.
-- Stay cheap enough to run continuously by using a **cascade**, so only suspicious text reaches the more expensive stages.
-- Work on the **whole web**, not just shopping carts (for example, a streaming trial that quietly auto-renews, or a newsletter popup that keeps reappearing).
+```
+Page you are viewing
+   |  scroll / DOM change / mouse idle
+   v
+Extension scrapes visible text, hashes it
+   |-- already classified? ---------> replay from in-memory cache (no processing)
+   |
+   v new text
+Local detector
+   1. spaCy splits text into sentences
+   2. Stage 1  "The Lookout"    binary DistilBERT: dark pattern or not?   (every sentence)
+   3. Stage 2  "The Profiler"   category DistilBERT: which tactic?        (flagged sentences only)
+   |
+   v
+Popup in the page: red = flagged (sentence, category, confidence), green = clean (first time only)
+Toolbar badge + popup panel: per-tab count and the last five detections
+```
 
-### Dark pattern categories
+### Stage by stage
+
+| Stage | Model | Question it answers | Runs on |
+|---|---|---|---|
+| 1 | `distilbert-base-uncased`, fine-tuned | Is this sentence a dark-pattern candidate? | Every sentence |
+| 2 | `distilbert-base-uncased`, fine-tuned (class-weighted) | Which category is it? | Stage 1 positives only |
+
+Both use `MAX_SEQ_LENGTH = 128` and softmax probabilities. A sentence is flagged when its Stage 1 probability is at or above `BINARY_THRESHOLD` (default 0.5). Stage 2 reports the top category with its confidence.
+
+### Stage 3 is not part of the product
+
+The prototype contains an optional third stage that sends flagged sentences to a Groq-hosted LLM for a second opinion (`confirmed`, `partial`, `rejected`). **That stage sends page text to a third party, so it breaks Dagent's privacy rule and is excluded from the product.** It is kept in the code only as an experiment, is disabled unless a `GROQ_API_KEY` is set, and should never be enabled in anything shipped to users.
+
+Without it, every detection is returned as `unverified` and shown in red. If a verification layer is wanted later, it has to run **locally** (for example a small on-device model, or confidence bands from Stage 2 itself).
+
+### Architecture options that were considered
+
+| Approach | Idea | Verdict |
+|---|---|---|
+| A. Extension sends text to an LLM | Fastest to prototype, but costly, slow, and sends page text to a third party | Rejected (privacy and cost) |
+| B. Own model, then LLM for flagged text | Cheap first pass, LLM only for ambiguous cases | Prototype only; the LLM step is dropped for privacy |
+| C. Fully on-device | The same models exported to ONNX and run in the browser | **The target for a shippable version** |
+
+---
+
+## 5. Dark pattern categories and dataset
 
 | Category | Example | Labelled examples |
 |---|---|---|
@@ -72,133 +145,91 @@ Dagent explores how a browser tool could help people spot this as they browse. I
 | Sneaking | "Priority insurance has been added to your cart." | 12 |
 | Forced Action | "Create an account to continue checkout." | 4 |
 
----
-
-## 3. How it works
-
-Dagent is a cascade. Each stage is more expensive than the last, and each one only sees what the previous stage flagged.
-
-```
-Scraped text block
-      |
-      v
-spaCy sentence segmentation
-      |
-      v
-Stage 1  "The Lookout"        DistilBERT binary classifier   (every sentence)
-      |  flagged only
-      v
-Stage 2  "The Profiler"       DistilBERT category classifier (flagged sentences)
-      |  candidates only
-      v
-Stage 3  "The Interrogator"   Groq LLM verification          (optional, one call per request)
-      |
-      v
-confirmed -> shown (red)   partial -> shown (orange) + reasoning   rejected -> removed + logged
-```
-
-| Stage | Model | Question it answers | Runs on |
-|---|---|---|---|
-| 1 | `distilbert-base-uncased`, fine-tuned | Is this sentence a dark-pattern candidate? | Every sentence |
-| 2 | `distilbert-base-uncased`, fine-tuned (class-weighted) | Which category is it? | Stage 1 positives only |
-| 3 | Groq-hosted LLM (optional) | Is this candidate genuinely a dark pattern? | Stage 1 + 2 candidates only |
-
-Stage 3 is **fail-open**: if no Groq key is configured, the request fails, times out, or the response cannot be parsed, detections are marked `unverified` and still shown rather than silently disappearing. Rejected detections are logged to `data/rejected_detections.jsonl` as future retraining data.
-
-### Architecture options that were considered
-
-| Approach | Idea | Verdict |
-|---|---|---|
-| A. Extension to LLM directly | Fastest to prototype, but one LLM call per scrape is too costly and slow | Proof of concept only |
-| B. Own model, then LLM only if flagged (cascade) | Cheap first pass, LLM only for ambiguous cases | **Selected** |
-| C. Fully on-device | Same models exported to ONNX and run in-browser (`transformers.js` / `onnxruntime-web`) so no browsing data leaves the device | Planned (v2) |
-
----
-
-## 4. Dataset
-
-**File:** `dagent_dataset.csv` (cleaned and merged)
+**File:** `dagent_dataset.csv`
 
 | Column | Type | Description |
 |---|---|---|
 | `page_id` | int | Source page the snippet came from |
 | `text` | string | The scraped sentence, phrase or paragraph |
 | `label` | int (0/1) | 1 = dark pattern, 0 = not |
-| `Pattern Category` | string | Category (meaningful when `label == 1`; otherwise `Not Dark Pattern`) |
+| `Pattern Category` | string | Category (`Not Dark Pattern` when `label` is 0) |
 
-- **2,356 rows** across **1,248 unique pages** (some pages contribute up to 41 rows).
+- **2,356 rows** from **1,248 unique pages** (some pages contribute up to 41 rows).
 - **Balanced binary labels:** 1,178 positive and 1,178 negative.
-- **Imbalanced categories** (see the table in [section 2](#dark-pattern-categories)).
-- Median text length is 5 words, up to 143 words, so the models must handle both short phrases and full paragraphs.
-- No missing values.
+- **Imbalanced categories**, as shown above.
+- Median text length is 5 words, up to 143, so the models handle both short phrases and full paragraphs.
 
 ---
 
-## 5. Models and training
+## 6. Models and training
 
-Training lives in `dagent_training.ipynb` and is designed for **Google Colab** (a T4 GPU is enough). Run all cells top to bottom and upload the dataset when prompted.
+Training is in `dagent_training.ipynb`, written for **Google Colab** (a T4 GPU is enough). Run all cells top to bottom and upload the dataset when prompted.
 
-**Key design choices**
+- **Grouped split by `page_id`** (70 / 15 / 15 train / val / test). Many rows share a page, so a plain random split would leak a page's style across train and test and inflate scores.
+- **Stage 1:** fine-tunes `distilbert-base-uncased` on `label`, 4 epochs, learning rate 2e-5, batch size 16, best model chosen by F1.
+- **Stage 2:** trains only on `label == 1` rows, 8 epochs, with **inverse-frequency class weights** through a custom `WeightedTrainer` so rare classes are not ignored.
+- **Inference helper:** spaCy sentence segmentation (naive `.split('.')` breaks on "Dr.", "$19.99", "e.g."), Stage 1, then Stage 2, returning detections with character offsets.
+- **Output:** both models plus Stage 2's `label_map.json`, zipped as `dark_pattern_models.zip`.
 
-- **Grouped split by `page_id`** (70 / 15 / 15 train / val / test). Many rows share a page, so a plain random split would leak a page's style across train and test and inflate validation accuracy.
-- **Stage 1** fine-tunes `distilbert-base-uncased` on `label` for 4 epochs (lr 2e-5, batch size 16, best model by F1).
-- **Stage 2** trains only on `label == 1` rows for 8 epochs, using **inverse-frequency class weights** through a custom `WeightedTrainer`, so rare classes are not simply ignored.
-- **Inference helper** in the notebook segments text with spaCy (naive `.split('.')` breaks on "Dr.", "$19.99", "e.g."), runs Stage 1 then Stage 2, and returns detections with true character offsets.
-- Both models are saved (with Stage 2's `label_map.json`) and zipped as `dark_pattern_models.zip`.
+Tune `BINARY_THRESHOLD` on the validation set, not the test set. Raise it to cut false positives, lower it to catch more.
 
-> Note: current `transformers` versions renamed the `Trainer` argument `tokenizer=` to `processing_class=`. The notebook already uses the new name.
+**Model files** are too large for Git. Download them from the [shared Google Drive folder](https://drive.google.com/drive/folders/1RJFFZU4_VKOmU0d6JxKUz0t0DvrIS4ou?usp=sharing).
 
-**Defaults:** `BINARY_THRESHOLD = 0.5`, `CATEGORY_THRESHOLD = 0.0`, `MAX_SEQ_LENGTH = 128`. Tune `BINARY_THRESHOLD` on the validation set, not the test set: raise it to reduce false positives, lower it to catch more.
+### Technology cheat sheet
 
-### Model files
+| Technology | Role |
+|---|---|
+| DistilBERT | Model architecture for both stages |
+| PyTorch | Runs the models today (TensorFlow is not used) |
+| Transformers (Hugging Face) | Loads the tokenizer and models |
+| SafeTensors | File format that stores the learned weights |
+| Tokenizer | Turns sentences into token IDs |
+| spaCy | Sentence splitting |
+| Softmax | Turns raw logits into probabilities |
+| ONNX | Planned export format for the on-device build |
 
-The weights are too large for Git. Download them from the [shared Google Drive folder](https://drive.google.com/drive/folders/1RJFFZU4_VKOmU0d6JxKUz0t0DvrIS4ou?usp=sharing).
+A full walk-through is in the [backend learning documentation](dagent_docs/dagents_backend_docs.docx).
 
 ---
 
-## 6. Backend (FastAPI)
+## 7. Detection service (FastAPI)
 
-The backend wraps the models behind two endpoints. Models are loaded **once at startup** through FastAPI's `lifespan` handler, never per request.
+A local service that wraps the two models. Models load **once at startup** (FastAPI `lifespan`), not per request.
 
 ```
 dagent_api/
 ├── app/
-│   ├── main.py          # app, CORS, lifespan model loading, /health, /detect, Stage 3 orchestration
+│   ├── main.py          # app, CORS, /health, /detect
 │   ├── inference.py     # DarkPatternDetector: spaCy, tokenizer, Stage 1 + 2, softmax, thresholds
-│   ├── config.py        # model paths, thresholds, MAX_SEQ_LENGTH, DEVICE, CORS, Groq settings
+│   ├── config.py        # model paths, thresholds, MAX_SEQ_LENGTH, DEVICE, CORS, optional Groq settings
 │   ├── schemas.py       # Pydantic request/response models
-│   └── llm_verifier.py  # Stage 3 Groq verification
+│   └── llm_verifier.py  # experimental, off by default, NOT part of the product
 ├── models/              # model weights (ignored by Git)
 │   ├── dark_pattern_stage1_binary/
 │   └── dark_pattern_stage2_category/
-├── data/
-│   └── rejected_detections.jsonl
-├── requirements.txt
-└── Dockerfile
+├── .env.example
+└── requirements.txt
 ```
-
-### Endpoints
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/health` | GET | Reports whether both models are loaded and which device (cpu/cuda) is in use |
-| `/detect` | POST | Takes a batch of 1 to 200 text blocks and returns detections per block |
+| `/health` | GET | Whether both models are loaded, and which device is in use |
+| `/detect` | POST | Up to 200 blocks, 50,000 combined characters, 5,000 per block |
 
-### Request
+**Request**
 
 ```json
 {
-  "page_url": "https://www.example.com/product",
+  "page_url": "https://example.com/product/123",
   "viewport_width": 1440,
   "viewport_height": 900,
   "blocks": [
-    { "block_id": "dagent-7", "text": "Only 2 left in stock!", "tag": "p" },
-    { "block_id": "dagent-8", "text": "Premium Wireless Headphones", "tag": "h1" }
+    { "block_id": "dagent-7", "text": "Only 2 left in stock!", "tag": "p" }
   ]
 }
 ```
 
-### Response
+**Response**
 
 ```json
 {
@@ -214,79 +245,61 @@ dagent_api/
           "binary_confidence": 0.97,
           "start_offset": 0,
           "end_offset": 22,
-          "llm_verdict": "confirmed",
+          "llm_verdict": "unverified",
           "llm_reasoning": null,
           "display_color": "red"
         }
       ]
-    },
-    { "block_id": "dagent-8", "source_text": "Premium Wireless Headphones", "detections": [] }
+    }
   ],
   "total_detections": 1
 }
 ```
 
-An empty `detections` list means clean text. Multiple entries mean multiple dark patterns in the same block. The `start_offset` / `end_offset` values let the extension highlight the exact text.
+An empty `detections` list means clean text. The `start_offset` and `end_offset` values locate the sentence inside the original block.
 
-### Configuration
+**Privacy behaviour of the service:** it logs only counts and timings (never page text or URLs), and `page_url` is accepted but not used or stored.
 
-All values are environment-variable configurable (see `app/config.py`): model paths, `BINARY_THRESHOLD`, `CATEGORY_THRESHOLD`, `MAX_SEQ_LENGTH`, `DEVICE`, `ALLOWED_ORIGINS` (lock this to the extension's origin in production), plus the Groq URL, model name, timeout, API key and rejected-log path.
+**Configuration** (environment variables or `dagent_api/.env`, defaults in `.env.example`): `STAGE1_MODEL_DIR`, `STAGE2_MODEL_DIR`, `BINARY_THRESHOLD`, `CATEGORY_THRESHOLD`, `MAX_SEQ_LENGTH`, `DEVICE` (`cpu` or `cuda`), `ALLOWED_ORIGINS` (use explicit origins, not `*`, outside local development).
 
-### Technology cheat sheet
-
-| Technology | Role in this project |
-|---|---|
-| DistilBERT | The model architecture used for Stage 1 and Stage 2 |
-| PyTorch | Framework that actually executes the models (TensorFlow and ONNX are **not** used today) |
-| Transformers (Hugging Face) | Loads the tokenizer and models |
-| SafeTensors | File format that stores the learned weights |
-| Tokenizer | Turns sentences into token IDs |
-| spaCy | Splits source text into sentences |
-| NumPy | Array maths, including the softmax |
-| Softmax | Turns raw logits into class probabilities |
-
-For a full walk-through of startup flow, tokenization, truncation, softmax, thresholds and Stage 3, see the [backend learning documentation](dagent_docs/dagents_backend_docs.docx).
+> The `GROQ_*` and `REJECTED_LOG_PATH` settings exist only for the experimental review stage. **Leave them unset.**
 
 ---
 
-## 7. Browser extension
+## 8. Browser extension
 
-A Chrome Manifest V3 extension (`dagent_extension/`). The request/response flow is shown below.
+A Chrome Manifest V3 extension in `dagent_extension/`.
 
-<p align="center">
-  <img src="assets/extension-flow.png" alt="Dagent extension flow: triggers fire, scrape and hash text, cache hit replays locally, cache miss goes to the background worker, popup renders result" width="680">
-</p>
+| Piece | Role |
+|---|---|
+| `content/content-script.js` | Scrapes visible text, hashes it, keeps the in-memory cache, draws the popup |
+| `background.js` | Batches blocks (200ms window) and calls the local detector; sets the toolbar badge; keeps per-tab detections |
+| `popup/` | Toolbar panel: service status, detection count, confirmed vs unconfirmed, the last five detections |
 
-| Piece | Where it runs | Notes |
-|---|---|---|
-| `content-script.js` | Every open tab | Scrapes, hashes, caches, renders the popup |
-| `classifiedCache` | In-memory `Map` in the content script | Client-side only, never persisted, wiped on refresh |
-| `background.js` | Chrome service worker | Owns the network call and 200ms batching |
-| FastAPI backend | Local machine (or wherever deployed) | Stateless, unaware that a cache exists |
+**Scraping.** Elements matching `p, h1, h2, h3, h4, span, div, li, a, label`. Text under 3 characters is skipped, and an element is scraped only if at least **50% of it is visible in the viewport** (non-zero size, not `display:none`, `visibility:hidden` or `opacity:0`). Each block is hashed for caching and given a stable `block_id`.
 
-**Scraping.** Selector `p, h1, h2, h3`. Text under 3 characters is discarded, and only elements **currently visible in the viewport** (non-zero box, not `display:none` / `visibility:hidden` / `opacity:0`) are scraped. Each block is hashed (djb2-style, base-36) for caching and gets a stable `block_id` (`dagent-1`, `dagent-2`, ...).
-
-**Triggers.** All three call `sendBlocksIfAny()`.
+**Triggers.**
 
 | Trigger | Debounce |
 |---|---|
 | DOM change (`MutationObserver`) | 400ms |
 | Scroll | 300ms |
 | Mouse idle | 500ms |
+| Page load | 500ms after load |
 
-**Cache behaviour**
+**Cache.** The cache is an in-memory `Map` in the content script. It lives on the user's device, is per tab and per page load, is never persisted, and is wiped on refresh or navigation.
 
 | Scenario | Popup |
 |---|---|
-| Cache miss, flagged | Red: sentence, category, confidence % |
-| Cache miss, clean | Green "No dark pattern detected" (once) |
-| Cache hit, flagged, past the 600ms cooldown | Red, replayed locally with no network call |
-| Cache hit, flagged, within cooldown | Suppressed |
-| Cache hit, clean | Never shown |
+| New text, flagged | Red: sentence, category, confidence % |
+| New text, clean | Green "No dark pattern detected" (once) |
+| Seen before, flagged, past the 600ms cooldown | Red, replayed locally, no processing |
+| Seen before, flagged, inside cooldown | Suppressed |
+| Seen before, clean | Never shown |
 
-Multiple flagged detections cycle one at a time (4 seconds each). The popup is rendered in a **shadow DOM** host so the page's CSS cannot affect it.
+Several flagged sentences cycle one at a time (4 seconds each). The popup is drawn in a **shadow DOM** so the host page's CSS cannot affect it.
 
-**Typical timing.** A first-time classification takes roughly 500-550ms from scroll-stop to popup (300ms scroll debounce + 200ms batch window + ~120ms measured inference). A cache hit takes about 300ms and is bounded only by the trigger's debounce, with zero backend involvement.
+**Timing.** A first-time classification takes roughly 500 to 550ms from scroll-stop to popup (300ms scroll debounce, 200ms batch window, about 120ms measured inference). A replay takes about 300ms, bounded only by the trigger's debounce.
 
 | Constant | Value | File |
 |---|---|---|
@@ -296,36 +309,38 @@ Multiple flagged detections cycle one at a time (4 seconds each). The popup is r
 | `REPLAY_COOLDOWN_MS` | 600ms | `content-script.js` |
 | `TOAST_DISPLAY_MS` | 4000ms | `content-script.js` |
 | `MIN_TEXT_LENGTH` | 3 chars | `content-script.js` |
+| `MIN_VISIBLE_RATIO` | 0.5 | `content-script.js` |
 | `BATCH_WINDOW_MS` | 200ms | `background.js` |
 
-The full pin-to-pin walk-through is in the [extension architecture notes](dagent_docs/dagent_architecture_1).
+Full detail is in the [extension architecture notes](dagent_docs/dagent_architecture_1).
 
 ---
 
-## 8. Frontend website
+## 9. Website
 
-The website (`dagent_frontend_ui/`) introduces the dark-pattern problem, shows the seven categories with examples, explains the cascade, and offers **Download** and **Feedback / File a Report** pages (email verification step, then issue type and description). It supports light and dark themes and is responsive.
+`dagent_frontend_ui/` is a React and Vite site with four pages: **Home** (the problem, the categories, the pipeline), **Scan** (a simulated shopping page that shows sample alerts as you scroll), **Download**, and **Feedback**. It supports light and dark themes and is responsive.
 
-The **Scan** screen shows a simulated shopping page. Scroll through it to see sample alerts for low-stock claims, countdowns and cancellation friction. These examples are written into the frontend and are **not live model predictions**. The Download and Feedback pages are part of the concept and prototype experience, not evidence that a hosted detector is available.
+It is a demonstration of the product idea. The scan examples are written into the frontend and are **not live model predictions**.
 
 ---
 
-## 9. Repository map
+## 10. Repository map
 
 | Folder | What you will find |
 |---|---|
-| `dagent_api/` | FastAPI application and inference pipeline prototype |
-| `dagent_extension/` | Chrome Manifest V3 extension prototype |
-| `dagent_frontend_ui/` | React and Vite website, including the simulated scan demo |
+| `dagent_api/` | FastAPI detection service |
+| `dagent_extension/` | Chrome Manifest V3 extension |
+| `dagent_frontend_ui/` | React and Vite website with the simulated scan demo |
 | `dagnet_training/` | Training notebook and dataset |
-| `dagent_docs/` | Project documentation, architecture notes, design materials, and copies of training resources |
+| `dagent_docs/` | Documentation, architecture notes, design materials, copies of training resources |
+| `assets/` | Logo and diagrams used in this README |
 | `dagent_models/` | Reserved for model files; ignored by Git |
 
 ---
 
-## 10. Getting started
+## 11. Getting started
 
-### Run the frontend demo
+### Run the website
 
 ```powershell
 cd dagent_frontend_ui
@@ -333,68 +348,81 @@ npm install
 npm run dev
 ```
 
-Vite prints the local address after startup. The Scan page runs its prepared simulation locally and needs neither the API nor model weights. For a production build, run `npm run build`.
+`npm run lint` and `npm run build` are available for checks and a production build. The site needs neither the service nor the model files.
 
-### Run the API prototype
+### Run the detection service locally
 
-1. Download the model files from the [Google Drive folder](https://drive.google.com/drive/folders/1RJFFZU4_VKOmU0d6JxKUz0t0DvrIS4ou?usp=sharing) and place them here:
-
-   ```text
-   dagent_api/models/dark_pattern_stage1_binary/
-   dagent_api/models/dark_pattern_stage2_category/
-   ```
-
-2. From `dagent_api/`, install and start the service:
+1. Download the model files from the [Google Drive folder](https://drive.google.com/drive/folders/1RJFFZU4_VKOmU0d6JxKUz0t0DvrIS4ou?usp=sharing) and place them in `dagent_api/models/dark_pattern_stage1_binary/` and `dagent_api/models/dark_pattern_stage2_category/`. Stage 2 must include `label_map.json`.
+2. From `dagent_api/`:
 
    ```powershell
    python -m venv .venv
    .venv\Scripts\Activate.ps1
    pip install -r requirements.txt
    python -m spacy download en_core_web_sm
+   Copy-Item .env.example .env
    uvicorn app.main:app --reload --port 8000
    ```
 
-3. Open `http://localhost:8000/docs` for the interactive API docs. Without both model directories the API cannot perform inference.
+3. Check `http://localhost:8000/health`, or open `http://localhost:8000/docs`.
 
-> **Privacy note.** If a Groq key is configured, Stage 3 sends candidate sentences **and the page URL** to Groq for a second opinion. Keep that data flow in mind before using the prototype with real browsing content. Leave the key unset to keep everything local.
+**Keep `GROQ_API_KEY` empty.** With it empty, nothing leaves your machine. Never commit `.env`.
 
 ### Load the extension
 
-Open your browser's extensions page, enable developer mode, and load `dagent_extension/` unpacked. It targets `http://localhost:8000` by default and the endpoint can be changed from the toolbar popup. It is not connected to the frontend demo.
+Open your browser's extensions page, enable developer mode, and load `dagent_extension/` unpacked. It sends blocks to `http://localhost:8000`. Start the service first.
 
 ### Retrain the models
 
-Open `dagnet_training/dagent_training.ipynb` in Google Colab, switch to a GPU runtime, run all cells, and upload `dagent_dataset.csv` when prompted. Copy the two output folders into `dagent_api/models/`.
+Open `dagnet_training/dagent_training.ipynb` in Google Colab, use a GPU runtime, run all cells, upload `dagent_dataset.csv` when asked, then copy the two output folders into `dagent_api/models/`.
 
 ---
 
-## 11. Known limitations
+## 12. Privacy audit of the current prototype
 
-- **Not deployed.** Models are large and there is no hosting budget, so there is no live service.
-- **Rare categories.** Obstruction (27), Sneaking (12) and Forced Action (4) have very little data. Stage 2 accuracy on these is unreliable until more labelled data is collected.
-- **Text only.** The extension scrapes `p`, `h1`, `h2` and `h3`; buttons, links, spans and visual (non-text) tricks are not covered. The tag is sent as metadata but is not a model input.
-- **128-token limit.** Sentences longer than `MAX_SEQ_LENGTH` are truncated, and the model never sees the excess. Changing it does not retrain the model.
-- **Viewport-only.** Only on-screen text is scanned; content is re-checked as you scroll.
-- **Optional LLM stage sends data off-device** when enabled.
+With the default setup (local service, `GROQ_API_KEY` empty), **page text stays on the user's machine**. The things that would change that are listed here so they can be removed before anything ships.
 
----
-
-## 12. Roadmap
-
-1. Reduce model size and cost to make deployment practical.
-2. **On-device mode:** export both models to ONNX (`optimum`) and run them in-browser via `transformers.js` / `onnxruntime-web`, so page text never leaves the machine.
-3. Collect more labelled data for Obstruction, Sneaking and Forced Action.
-4. Tune `BINARY_THRESHOLD` on the validation set.
-5. Feed community reports and Stage 3 rejections back into training.
-6. Wire the website's Download and Feedback pages to a real backend.
+| Item | Where | Risk | Action |
+|---|---|---|---|
+| Groq review stage | `app/llm_verifier.py`, `GROQ_API_KEY` | Sends each flagged **sentence, its category and confidence** to Groq (page URL is not included) | Keep disabled; remove from the product |
+| Remote hosts in the extension | `manifest.json` `host_permissions` includes `*.ngrok-free.app`, `*.ngrok-free.dev`, `*.ngrok.io` | Would let the extension send page text to a tunnelled or hosted server | Remove for any release build; keep `localhost` only |
+| Rejected-sentence log | `REJECTED_LOG_PATH` | Writes visited-page text to disk | Leave unset; only relevant to the Groq stage |
+| Wide CORS | `ALLOWED_ORIGINS=*` | Any web page could call a local service | Set to the extension origin |
+| Debug logging | `console.debug` in `content-script.js` prints scraped results | Page text appears in the dev console | Remove or gate behind a dev flag |
+| Website wording | Home and Download pages describe a "deployed model" and an "LLM reasoning engine" | Contradicts the privacy promise | Reword to match this README |
+| Feedback form | `FeedbackPage` collects an email address | Personal data; currently not wired to a backend | Decide whether to keep; if so, state clearly what is stored |
 
 ---
 
-## 13. Further reading
+## 13. Known issues and limitations
 
-- [API prototype setup](dagent_api/README.md)
-- [Frontend notes](dagent_frontend_ui/README.md)
-- [Project documentation](dagent_docs/dagent_documentation.md) (problem statement, architecture options, dataset and model design)
-- [Extension architecture notes](dagent_docs/dagent_architecture_1) (trigger-to-popup flow, cache logic, timing)
-- [Backend learning documentation](dagent_docs/dagents_backend_docs.docx) (DistilBERT, PyTorch, SafeTensors, ONNX, softmax, Stage 3)
+- **Port mismatch.** `popup/popup.js` checks health on `http://localhost:8080` while `background.js` and the service use `8000`, so the popup status dot can show "offline" while detection works.
+- **Stale extension README.** `dagent_extension/README.md` is a copy of an old API README and does not describe the extension.
+- **Rare categories.** Obstruction (27), Sneaking (12) and Forced Action (4) have very little data, so Stage 2 is unreliable on them until more labelled examples exist.
+- **Text only.** Visual tricks (pre-ticked boxes, hidden buttons, colour and size manipulation) are not covered; the extension reads text.
+- **Broad scraping.** Matching `span`, `div`, `a` and similar elements catches more text but can also send repeated or nested text; this is a precision and performance trade-off still to tune.
+- **128-token limit.** Longer sentences are truncated and the model never sees the excess.
+- **No verification stage.** Without Stage 3, borderline calls are shown in red with no second opinion.
+- **Not a shippable download yet.** Users would currently have to run the local service themselves.
+
+---
+
+## 14. Roadmap
+
+1. **On-device build.** Export both models to ONNX (`optimum`) and run them in the browser with `transformers.js` or `onnxruntime-web`, so no service is needed. Shrink the models (distillation, quantization) to make this practical.
+2. **Local-only verification.** Replace the cloud LLM idea with something that runs on the device, or drop it.
+3. **Privacy hardening.** Remove remote hosts and debug logging, lock CORS, and reword the website.
+4. **More data** for Obstruction, Sneaking and Forced Action, and threshold tuning on the validation set.
+5. **Feedback loop without surveillance.** If user reports feed retraining, make it explicit opt-in, per report, with the user choosing what to share.
+6. **Wire up the website's Download page** once there is a build to download.
+
+---
+
+## 15. Further reading
+
+- [Detection service notes](dagent_api/README.md)
+- [Website notes](dagent_frontend_ui/README.md)
+- [Project documentation](dagent_docs/dagent_documentation.md): problem statement, architecture options, dataset and model design
+- [Extension architecture notes](dagent_docs/dagent_architecture_1): trigger-to-popup flow, cache logic, timing
+- [Backend learning documentation](dagent_docs/dagents_backend_docs.docx): DistilBERT, PyTorch, SafeTensors, ONNX, softmax
 - [Training notebook](dagnet_training/dagent_training.ipynb) and [dataset](dagnet_training/dagent_dataset.csv)
